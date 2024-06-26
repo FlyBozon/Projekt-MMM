@@ -191,7 +191,7 @@ def main():
 
     image_frame = tk.Frame(scrollable_frame)
     image_frame.grid(row=0, column=1, padx=20, pady=20, sticky='nw')
-    load_and_display_image(image_frame, "./789.png")
+    load_and_display_image(image_frame, "./scheme.png")
 
     window.mainloop()
 
