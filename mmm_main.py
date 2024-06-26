@@ -1,138 +1,199 @@
-import matplotlib.pyplot as plt
+import tkinter as tk
+from tkinter import messagebox, ttk
 import numpy as np
-from turtle import *
-# Create a figure and axis with a larger window size
-fig, ax = plt.subplots()  # Width=12 inches, Height=8 inches
+import matplotlib.pyplot as plt
+from scipy.signal import sawtooth
+from PIL import Image, ImageTk
 
-# Set axis limits
-ax.set_xlim(0, 23)
-ax.set_ylim(0, 10)
+def update_fraction():
+    try:
+        J1 = float(J1_entry.get())
+        n1 = float(n1_entry.get())
+        n2 = float(n2_entry.get())
+        J2 = float(J2_entry.get())
+        b = float(b_entry.get())
+        k = float(k_entry.get())
+    except ValueError:
+        messagebox.showerror("Blad", "Wprowadź poprawnie всі liczby")
 
-ax.plot([4, 5], [7, 7], color='black')
+def plot_response():
+    try:
+        J1 = float(J1_entry.get())
+        n1 = float(n1_entry.get())
+        n2 = float(n2_entry.get())
+        J2 = float(J2_entry.get())
+        b = float(b_entry.get())
+        k = float(k_entry.get())
+        
+        selected = var.get()
+        T = float(time_entry.get())
+        amplitude = float(amplitude_entry.get())
+        
+        fig, axs = plt.subplots(2, 2, figsize=(10, 8))
+        time_values = np.linspace(0, T, 10000)
+        
+        if selected == 1:
+            frequency = float(frequency_entry.get())
+            phase = float(phase_entry.get())
+            signal = amplitude * np.sin(2 * np.pi * frequency * time_values + np.deg2rad(phase))
+        elif selected == 2:
+            signal = amplitude * np.heaviside(time_values, 1)
+        elif selected == 3:
+            frequency = float(frequency_entry.get())
+            signal = amplitude * sawtooth(2 * np.pi * frequency * time_values, 0.5)
+        elif selected == 4:
+            signal = amplitude * np.ones_like(time_values)
+        
+        axs[0, 0].plot(time_values, signal)
+        axs[0, 0].set_title("Pobudzenie")
+        axs[0, 0].set_xlabel("Czas [s]")
+        axs[0, 0].set_ylabel("Amplituda")
+        axs[0, 0].grid(True)
 
-recJ1=plt.Rectangle((5, 6.5), 2, 1, fill=True, edgecolor='black', facecolor='none')
-ax.add_patch(recJ1)
-ax.text(6, 7, 'J1', horizontalalignment='center', verticalalignment='center')
+        axs[1, 0].set_title("Pozycja [rad]")
 
-ax.plot([7, 9], [7, 7], color='black')
+        def derivative(y, t, Tm):
+            theta2, omega2 = y
+            dx1_dt = omega2
+            dx2_dt = (Tm * (n2 / n1) - b * omega2 - k * theta2) / (J2 + J1 * (n2 / n1))
+            return np.array([dx1_dt, dx2_dt])
 
-recn1=plt.Rectangle((9, 6), 0.5, 2, fill=True, edgecolor='black', facecolor='none')
-ax.add_patch(recn1)
-ax.text(10, 7, 'n1', horizontalalignment='center', verticalalignment='center')
+        y0 = [0, 0]
+        dt = T / 10000
+        y = np.zeros((len(time_values), len(y0)))
+        y[0] = y0
+        for i in range(1, len(time_values)):                               
+            Tm = signal[i]  
+            k1 = derivative(y[i-1], time_values[i-1], Tm)                       
+            k2 = derivative(y[i-1] + 0.5*dt*k1, time_values[i-1] + 0.5*dt, Tm)
+            k3 = derivative(y[i-1] + 0.5*dt*k2, time_values[i-1] + 0.5*dt, Tm)
+            k4 = derivative(y[i-1] + dt*k3, time_values[i-1] + dt, Tm)
+            y[i] = y[i-1] + dt*(k1 + 2*k2 + 2*k3 + k4) / 6
 
-recn2=plt.Rectangle((9, 2), 0.5, 4, fill=True, edgecolor='black', facecolor='none')
-ax.add_patch(recn2)
-ax.text(10, 3, 'n1', horizontalalignment='center', verticalalignment='center')
+        axs[1, 0].plot(time_values, y[:, 0], color='orange', label='Runge-Kutta')
+        axs[1, 0].set_xlabel("Czas [s]")
+        axs[1, 0].set_ylabel("Pozycja [rad]")
+        axs[1, 0].grid(True)
 
-ax.plot([9.5,11], [4, 4], color='black')
+        y_euler = np.zeros((len(time_values), len(y0)))
+        y_euler[0] = y0
+        for i in range(1, len(time_values)):
+            Tm = signal[i]  
+            y_euler[i] = y_euler[i-1] + dt * derivative(y_euler[i-1], time_values[i-1], Tm)
 
-recJ2 = plt.Rectangle((11, 3.5), 2, 1, fill=True, edgecolor='black', facecolor='none')
-ax.add_patch(recJ2)
-ax.text(12, 4, 'J2', horizontalalignment='center', verticalalignment='center')
+        axs[1, 0].plot(time_values, y_euler[:, 0], color='blue', linestyle='--', label='Euler')
+        axs[1, 0].legend()
 
-ax.plot([13, 17.5], [4, 4], color='black')
-ax.plot([20.25, 22], [4, 4], color='black')
-ax.plot([16, 16], [2.3, 5.7], color='black')
-ax.plot([22, 22], [2, 6], color='black')
+        axs[0, 1].plot(time_values, y[:, 1], color='green', label='Runge-Kutta')
+        axs[0, 1].plot(time_values, y_euler[:, 1], color='purple', linestyle='--', label='Euler')
+        axs[0, 1].set_title("Szybkość [rad/s]")
+        axs[0, 1].set_xlabel("Czas [s]")
+        axs[0, 1].set_ylabel("Szybkość [rad/s]")
+        axs[0, 1].grid(True)
+        axs[0, 1].legend()
 
-#sprezyna
-damper_x = [17.5, 17.625, 17.825, 18, 18.25, 18.5, 18.75, 19, 19.25, 19.45, 19.65, 19.83, 20, 20.2]
-damper_y = [4, 4.5, 3.5, 4.5, 3.5, 4.5, 3.5, 4.5, 3.5, 4.5, 3.5, 4.5, 3.5, 4]
-ax.plot(damper_x, damper_y, color='black')
-ax.text(19.5, 3, 'k', horizontalalignment='center', verticalalignment='center')
+        plt.tight_layout()
+        plt.show()
 
-# tlumik
-ax.plot([15.5, 16.5], [2, 2], color='black')
-ax.plot([15.5, 15.5], [2, 3], color='black')
-ax.plot([16.5, 16.5], [2, 3], color='black')
+    except ValueError:
+        messagebox.showerror("Błąd", "Wprowadź poprawnie wszystkie liczby")
 
-ax.plot([15.5, 16.5], [6, 6], color='black')
-ax.plot([15.5, 15.5], [5, 6], color='black')
-ax.plot([16.5, 16.5], [5, 6], color='black')
+def load_and_display_image(frame, image_path):
+    image = Image.open(image_path)
+    photo = ImageTk.PhotoImage(image)
+    label = tk.Label(frame, image=photo)
+    label.image = photo
+    label.pack()
 
-ax.text(16.75, 4.5, 'b', horizontalalignment='center', verticalalignment='center')
+def main():
+    window = tk.Tk()
+    window.title("Model")
+    window.geometry("800x600")
 
-#obroty
-center1 = (5 ,7)    
-radius = 3.2         
-start_angle = -25     
-end_angle = 25        
+    canvas = tk.Canvas(window)
+    scrollbar = ttk.Scrollbar(window, orient="vertical", command=canvas.yview)
+    scrollable_frame = ttk.Frame(canvas)
 
-theta = np.linspace(np.radians(start_angle), np.radians(end_angle), 100)
+    scrollable_frame.bind(
+        "<Configure>",
+        lambda e: canvas.configure(
+            scrollregion=canvas.bbox("all")
+        )
+    )
 
-x1 = center1[0] + radius * np.cos(theta)
-y1 = center1[1] + radius * np.sin(theta)
-ax.plot(x1, y1, color='black')
-ax.set_aspect('equal')
-ax.arrow(8, 5.9, -0.1, -0.1, head_width=0.5, head_length=0.5, fc='black', ec='black')
-ax.text(8.5, 8.5, r'$\theta_2$', horizontalalignment='center', verticalalignment='center')
+    canvas.create_window((0, 0), window=scrollable_frame, anchor="nw")
+    canvas.configure(yscrollcommand=scrollbar.set)
 
-center2 = (10.7 ,4)    
-radius2 = 3.2        
-start_angle = -25     
-end_angle = 25        
+    canvas.pack(side="left", fill="both", expand=True)
+    scrollbar.pack(side="right", fill="y")
 
-theta = np.linspace(np.radians(start_angle), np.radians(end_angle), 100)
+    input_frame = tk.Frame(scrollable_frame)
+    input_frame.grid(row=0, column=0, padx=20, pady=20, sticky='nw')
 
-x2 = center2[0] + radius * np.cos(theta)
-y2 = center2[1] + radius * np.sin(theta)
-ax.plot(x2, y2, color='black')
-ax.set_aspect('equal')
-ax.arrow(13.7, 2.9, -0.1, -0.1, head_width=0.5, head_length=0.5, fc='black', ec='black')
-ax.text(14.2, 5.5, r'$\theta_2$', horizontalalignment='center', verticalalignment='center')
+    global J1_entry, n1_entry, n2_entry, J2_entry, b_entry, k_entry
+    tk.Label(input_frame, text="J1:", font=("Helvetica", 14)).grid(row=0, column=0, sticky='e')
+    J1_entry = tk.Entry(input_frame)
+    J1_entry.grid(row=0, column=1, sticky='w')
 
-center3 = (2 ,7)    
-radius3 = 2     
-start_angle = -25    
-end_angle = 25       
+    tk.Label(input_frame, text="n1:", font=("Helvetica", 14)).grid(row=1, column=0, sticky='e')
+    n1_entry = tk.Entry(input_frame)
+    n1_entry.grid(row=1, column=1, sticky='w')
 
-theta = np.linspace(np.radians(start_angle), np.radians(end_angle), 100)
+    tk.Label(input_frame, text="n2:", font=("Helvetica", 14)).grid(row=2, column=0, sticky='e')
+    n2_entry = tk.Entry(input_frame)
+    n2_entry.grid(row=2, column=1, sticky='w')
 
-x3 = center3[0] + radius3 * np.cos(theta)
-y3 = center3[1] + radius3 * np.sin(theta)
-ax.plot(x3, y3, color='black')
-ax.set_aspect('equal')
-ax.arrow(3.85, 6.2, -0.1, -0.1, head_width=0.5, head_length=0.5, fc='black', ec='black')
-ax.text(4.2, 8.3, r'$\theta_2$', horizontalalignment='center', verticalalignment='center')
+    tk.Label(input_frame, text="J2:", font=("Helvetica", 14)).grid(row=3, column=0, sticky='e')
+    J2_entry = tk.Entry(input_frame)
+    J2_entry.grid(row=3, column=1, sticky='w')
 
-#mocowania k
-x=22
-dx=0.5
-y=2
-dy=0.5
-for i in range(8):
-    ax.plot([x, x+dx], [y, y+dy], color='black')
-    y=y+0.5
+    tk.Label(input_frame, text="b:", font=("Helvetica", 14)).grid(row=4, column=0, sticky='e')
+    b_entry = tk.Entry(input_frame)
+    b_entry.grid(row=4, column=1, sticky='w')
 
-#mocowania b
-x=15.25
-dx=0.25
-y=5
-dy=0.25
-for i in range(4):
-    ax.plot([x, x+dx], [y, y+dy], color='black')
-    y=y+0.25
-for i in range(5):
-    ax.plot([x, x+dx], [y, y+dy], color='black')
-    x=x+0.25
-for i in range(5):
-    ax.plot([x, x+dx], [y, y+dy], color='black')
-    y=y-0.25
+    tk.Label(input_frame, text="k:", font=("Helvetica", 14)).grid(row=5, column=0, sticky='e')
+    k_entry = tk.Entry(input_frame)
+    k_entry.grid(row=5, column=1, sticky='w')
 
-x=15.25
-dx=0.25
-y=2.75
-dy=0.25
-for i in range(4):
-    ax.plot([x, x+dx], [y, y+dy], color='black')
-    y=y-0.25
-for i in range(5):
-    ax.plot([x, x+dx], [y, y+dy], color='black')
-    x=x+0.25
-for i in range(5):
-    ax.plot([x, x+dx], [y, y+dy], color='black')
-    y=y+0.25
+    update_button = tk.Button(input_frame, text="Aktualizuj dane", command=update_fraction)
+    update_button.grid(row=6, columnspan=2)
 
-ax.axis('off')
+    global time_entry, amplitude_entry, frequency_entry, phase_entry, var
+    time_label = tk.Label(input_frame, text="Czas pobudzenia [s]:", font=("Helvetica", 10))
+    time_label.grid(row=7, column=0, sticky='e', padx=20, pady=10)
+    time_entry = tk.Entry(input_frame)
+    time_entry.grid(row=7, column=1, sticky='w', padx=20, pady=10)
 
-plt.show()
+    tk.Label(input_frame, text="Rodzaj pobudzenia:", font=("Helvetica", 10)).grid(row=8, column=0, sticky='e', padx=20, pady=10)
+    var = tk.IntVar(value=2)
+    tk.Radiobutton(input_frame, text="Sinusoida", variable=var, value=1, font=("Helvetica", 10)).grid(row=8, column=1, sticky='w', padx=20, pady=10)
+    tk.Radiobutton(input_frame, text="Skok jednostkowy", variable=var, value=2, font=("Helvetica", 10)).grid(row=9, column=1, sticky='w', padx=20, pady=10)
+    tk.Radiobutton(input_frame, text="Trojkatne", variable=var, value=3, font=("Helvetica", 10)).grid(row=10, column=1, sticky='w', padx=20, pady=10)
+    tk.Radiobutton(input_frame, text="Prostokątne", variable=var, value=4, font=("Helvetica", 10)).grid(row=11, column=1, sticky='w', padx=20, pady=10)
+
+    amplitude_label = tk.Label(input_frame, text="Amplituda:", font=("Helvetica", 10))
+    amplitude_label.grid(row=12, column=0, sticky='e', padx=20, pady=10)
+    amplitude_entry = tk.Entry(input_frame)
+    amplitude_entry.grid(row=12, column=1, sticky='w', padx=20, pady=10)
+
+    frequency_label = tk.Label(input_frame, text="Częstotliwość [Hz] (dla sinusoidy i trojkatnego):", font=("Helvetica", 10))
+    frequency_label.grid(row=13, column=0, sticky='e', padx=20, pady=10)
+    frequency_entry = tk.Entry(input_frame)
+    frequency_entry.grid(row=13, column=1, sticky='w', padx=20, pady=10)
+
+    phase_label = tk.Label(input_frame, text="Faza w stopniach (dla sinusoidy):", font=("Helvetica", 10))
+    phase_label.grid(row=14, column=0, sticky='e', padx=20, pady=10)
+    phase_entry = tk.Entry(input_frame)
+    phase_entry.grid(row=14, column=1, sticky='w', padx=20, pady=10)
+
+    plot_button = tk.Button(input_frame, text="Wykreśl odpowiedź", command=plot_response)
+    plot_button.grid(row=15, column=1, sticky='w', padx=20, pady=10)
+
+    image_frame = tk.Frame(scrollable_frame)
+    image_frame.grid(row=0, column=1, padx=20, pady=20, sticky='nw')
+    load_and_display_image(image_frame, "./789.png")
+
+    window.mainloop()
+
+if __name__ == "__main__":
+    main()
